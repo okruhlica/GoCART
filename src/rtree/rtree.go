@@ -1,9 +1,6 @@
 package rtree
 
 import "sort"
-import "fmt"
-import "strings"
-import "strconv"
 import "math"
 
 type rtree struct {
@@ -176,32 +173,4 @@ func (t *rtree) Classify(o *Observation) int {
 		return t.Left.Classify(o)
 	}
 	return t.Right.Classify(o)
-}
-
-func (t *rtree) PrintTree(depth int) string {
-	if t != nil {
-		splitPredictor, splitVal := NO_PREDICTOR, -1.0
-		if t.SplitValue != nil && t.SplitPredictor != nil {
-			splitVal = t.SplitValue.Float
-			splitPredictor = *t.SplitPredictor
-		}
-		fmt.Printf("%s (rule: %s < %f, impurity: %f, classification:%d)[%d observations:[%s]]\n", strings.Repeat("-", depth*3+1),
-			splitPredictor,
-			splitVal,
-			t.Impurity,
-			t.Classification,
-			len(t.Observations),
-			serializeObservations(t.Observations))
-		return t.Left.PrintTree(depth+1) + t.Right.PrintTree(depth+1)
-	}
-	return ""
-}
-
-func serializeObservations(observations []*Observation) string {
-	out := ""
-	for _, obs := range observations {
-		out += (",[target=" + strconv.FormatFloat((*obs)[TARGET_KEY].Float, 'f', 6, 64)) +
-			(",f1=" + strconv.FormatFloat((*obs)["feature1"].Float, 'f', 6, 64) + "]")
-	}
-	return out
 }
