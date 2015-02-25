@@ -4,6 +4,7 @@ import "sort"
 import "fmt"
 import "strings"
 import "strconv"
+import "math"
 
 type rtree struct {
 	Left, Right, Up *rtree
@@ -12,6 +13,7 @@ type rtree struct {
 	SplitPredictor *string
 	SplitValue     *Value
 	Impurity       float64
+	Classification int
 }
 
 func (t *rtree) IsLeaf() bool {
@@ -19,11 +21,13 @@ func (t *rtree) IsLeaf() bool {
 }
 
 func (t *rtree) SetLeft(child *rtree) {
+	child.InitRoot()
 	child.Up = t
 	t.Left = child
 }
 
 func (t *rtree) SetRight(child *rtree) {
+	child.InitRoot()
 	child.Up = t
 	t.Right = child
 }
@@ -47,6 +51,7 @@ func (t *rtree) GetLeaves() []*rtree {
 const NO_PREDICTOR string = "__noPredictor__"
 const NO_GINI_VALUE float64 = 99999999999999.0
 const NO_INDEX = -1
+const NO_CLASSIFICATION = -1
 
 func (t *rtree) FindBestSplit() (string, int, float64) {
 	bestPredictor, bestIndex, bestGini := NO_PREDICTOR, NO_INDEX, NO_GINI_VALUE
@@ -103,10 +108,12 @@ func gini(data []*Observation) float64 {
 
 func (t *rtree) InitRoot() {
 	t.Impurity = gini(t.Observations)
+	t.Classification = t.GetMajorityVote()
 }
 
 func (t *rtree) Expand(auto bool) {
 	if len(t.Observations) <= 1 {
+		t.Classification = t.GetMajorityVote()
 		return
 	}
 
@@ -119,11 +126,26 @@ func (t *rtree) Expand(auto bool) {
 
 	t.SplitPredictor = &bestPredictor
 	t.SplitValue = (*t.Observations[bestIndex])[bestPredictor]
+	t.Classification = NO_CLASSIFICATION
 
 	if auto {
 		t.Left.Expand(true)
 		t.Right.Expand(true)
 	}
+}
+
+func (t *rtree) GetMajorityVote() int {
+	count, count1 := len(t.Observations), 0
+	for _, obs := range t.Observations {
+		if math.Abs((*obs)[TARGET_KEY].Float-1.0) < 0.001 {
+			count1++
+		}
+	}
+
+	if count1 > count-count1 {
+		return 1
+	}
+	return 0
 }
 
 // Splits the node into subtrees so that values [0:splitIdx-1] belong to the left subtree and [splitIdx:] to the right subtree.
@@ -135,7 +157,7 @@ func (t *rtree) Split(splitIdx int) {
 	l := new(rtree)
 	r := new(rtree)
 
-	l.Observations = t.Observations[0:splitIdx]
+	l.Observations = t.Observations[:splitIdx]
 	r.Observations = t.Observations[splitIdx:]
 
 	t.SetLeft(l)
@@ -145,6 +167,17 @@ func (t *rtree) Split(splitIdx int) {
 	t.Right.Impurity = gini(r.Observations)
 }
 
+func (t *rtree) Classify(o *Observation) int {
+	if t.Classification != NO_CLASSIFICATION {
+		return t.Classification
+	}
+
+	if (*(*o)[*t.SplitPredictor]).Float < t.SplitValue.Float {
+		return t.Left.Classify(o)
+	}
+	return t.Right.Classify(o)
+}
+
 func (t *rtree) PrintTree(depth int) string {
 	if t != nil {
 		splitPredictor, splitVal := NO_PREDICTOR, -1.0
@@ -152,10 +185,11 @@ func (t *rtree) PrintTree(depth int) string {
 			splitVal = t.SplitValue.Float
 			splitPredictor = *t.SplitPredictor
 		}
-		fmt.Printf("%s (rule: %s < %f, purity: %f)[%d observations:[%s]]\n", strings.Repeat("-", depth*3+1),
+		fmt.Printf("%s (rule: %s < %f, impurity: %f, classification:%d)[%d observations:[%s]]\n", strings.Repeat("-", depth*3+1),
 			splitPredictor,
 			splitVal,
 			t.Impurity,
+			t.Classification,
 			len(t.Observations),
 			serializeObservations(t.Observations))
 		return t.Left.PrintTree(depth+1) + t.Right.PrintTree(depth+1)
@@ -166,7 +200,8 @@ func (t *rtree) PrintTree(depth int) string {
 func serializeObservations(observations []*Observation) string {
 	out := ""
 	for _, obs := range observations {
-		out += ",target=" + strconv.FormatFloat((*obs)[TARGET_KEY].Float, 'f', 6, 64)
+		out += (",[target=" + strconv.FormatFloat((*obs)[TARGET_KEY].Float, 'f', 6, 64)) +
+			(",f1=" + strconv.FormatFloat((*obs)["feature1"].Float, 'f', 6, 64) + "]")
 	}
 	return out
 }

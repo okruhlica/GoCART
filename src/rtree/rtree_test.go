@@ -153,6 +153,26 @@ func assertGini(tst *testing.T, testLabel string, err float64, exp_err float64) 
 	}
 }
 
+func Test_Classify(tst *testing.T) {
+	t := new(rtree)
+	observations := prepareTestObservations([]string{})
+	t.Observations = *observations
+	t.Expand(true)
+
+	obsNew := Observation{
+		"feature1": &Value{4.7},
+		"feature2": &Value{4.7},
+		"feature3": &Value{40.7},
+	}
+	outcome := t.Classify(&obsNew)
+
+	if outcome == 0 {
+		tst.Logf("Classification test passed (classification = 1).")
+	} else {
+		tst.Errorf("Classification test failed (expected = %d, was %d).", 1-outcome, outcome)
+	}
+}
+
 func Test_FindPredictorSplit(tst *testing.T) {
 	t := new(rtree)
 	observations := prepareTestObservations([]string{})
@@ -220,6 +240,27 @@ func Test_ExpandNode(tst *testing.T) {
 		tst.Logf("Test expand node passed with tree %s", t.PrintTree(0))
 	} else {
 		tst.Errorf("Test expand node failed. Expected to split into (%d,%d) nodes, got (%d,%d). Tree is %s", 3, 2, len(t.Left.Observations), len(t.Right.Observations), t.PrintTree(0))
+	}
+}
+
+func Test_GetMajorityVote(tst *testing.T) {
+	t := new(rtree)
+
+	//Test case 1
+	observations := prepareTestObservations([]string{})
+	t.Observations = *observations
+	if t.GetMajorityVote() == 1 {
+		tst.Logf("Test majority vote passed.")
+	} else {
+		tst.Errorf("Test majority vote failed. Expected 1, got %d", t.GetMajorityVote())
+	}
+
+	//Test case 2
+	t.Observations = (*observations)[:3]
+	if t.GetMajorityVote() == 0 {
+		tst.Logf("Test majority vote passed.")
+	} else {
+		tst.Errorf("Test majority vote failed. Expected 0, got %d", t.GetMajorityVote())
 	}
 }
 

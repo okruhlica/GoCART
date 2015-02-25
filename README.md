@@ -1,2 +1,2 @@
 # GoCART
-CART tree classifier implementation in Go language.
+Regression tree classifier implementation in Go language.
