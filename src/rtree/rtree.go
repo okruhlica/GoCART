@@ -3,69 +3,62 @@ package rtree
 import "sort"
 import "math"
 import "strings"
-import "fmt"
+
+//import "fmt"
 
 const NO_PREDICTOR string = "__noPredictor__"
 const NO_FLOAT = 9999999999.9937
-const NO_GINI_VALUE float64 = NO_FLOAT
 const NO_INDEX = -1
 const NO_CLASSIFICATION = -1
 
+// Represents a classification tree (tree node)
 type rtree struct {
-	Left, Right, Up *rtree
-	Observations    []*Observation
+	Left, Right, Up *rtree         // Pointers to parent and children nodes
+	Observations    []*Observation // A slice of observations relevant to this node
 
-	SplitPredictor *string
-	SplitValue     *Value
-	Impurity       float64
-	Classification int
-	Depth          int
+	SplitPredictor *string // The predictor (attribute/feature) to split on in this node. Value in leaves is NO_PREDICTOR
+	SplitValue     *Value  // The value of the split predictor to split on; smaller valued obserations continue to the left subtree, larger to the right subtree
+	Impurity       float64 // Gini measure of impurity of the node (less is better)
+	Classification int     // For leaf nodes denotes the predicted class; value is NO_CLASSIFICATION in internal nodes
+	Depth          int     // Distance from tree root
 
-	GrowOptions *GrowOptions
+	GrowOptions *GrowOptions // Settings governing the tree expansion and related stop-conditions.
 }
 
+// Returns true iff this node has no children
 func (t *rtree) IsLeaf() bool {
 	return t.Left == nil && t.Right == nil
 }
 
+// Initializes the provided node and sets the pointers so that it is the left child of the current node.
 func (t *rtree) SetLeft(child *rtree) {
 	child.InitNode(t.GrowOptions, t.Depth+1)
 	child.Up = t
 	t.Left = child
 }
 
+// Initializes the provided node and sets the pointers so that it is the right child of the current node.
 func (t *rtree) SetRight(child *rtree) {
 	child.InitNode(t.GrowOptions, t.Depth+1)
 	child.Up = t
 	t.Right = child
 }
 
-func (t *rtree) GetLeaves() []*rtree {
-	if t.IsLeaf() {
-		return []*rtree{t}
-	}
-
-	leaves := []*rtree{}
-	if t.Left != nil {
-		leaves = t.Left.GetLeaves()
-	}
-
-	if t.Right != nil {
-		return append(leaves, t.Right.GetLeaves()...)
-	}
-	return leaves
-}
-
-func isEligiblePredictor(predictor string) bool {
+// Returns true iff the given attribute name is a valid for splitting upon.
+// Only attributes that do not start with two underscores can be used as predictors.
+func IsPredictor(predictor string) bool {
 	return predictor != TARGET_KEY && !strings.HasPrefix(predictor, "__")
 }
 
+// Finds the best possible splitting paramters for the given node by testing all eligible splits on all eligible predictors.
+// Returns: <predictor to split upon>  <index to split upon> <gini impurity of the split>
+// Side-effects: Re-orders the observations within the node.
 func (t *rtree) FindBestSplit() (string, int, float64) {
-	bestPredictor, bestIndex, bestGini := NO_PREDICTOR, NO_INDEX, NO_GINI_VALUE
+	bestPredictor, bestIndex, bestGini := NO_PREDICTOR, NO_INDEX, NO_FLOAT
 	for predictor := range *(t.Observations[0]) {
-		if isEligiblePredictor(predictor) {
+		if IsPredictor(predictor) {
 			thisIdx, thisGini := t.BestSplitWithPredictor(predictor)
-			if bestPredictor == NO_PREDICTOR || (thisGini < bestGini && thisGini != NO_GINI_VALUE) {
+			if bestPredictor == NO_PREDICTOR || (thisGini < bestGini && thisGini != NO_FLOAT) {
 				bestGini, bestIndex, bestPredictor = thisGini, thisIdx, predictor
 			}
 		}
@@ -79,7 +72,7 @@ func (t *rtree) SortByPredictor(predictor string) {
 	sort.Sort(sortFunc)
 }
 
-// Calculates the cummulative count of observations with target = 1 up to the given index and returns an array of ints.
+// Returns the cummulative count of observations with target = 1 up to the given index (result is an array of ints).
 func calculateCummulativeGoodSlice(observations *[]*Observation) *[]int {
 	good := make([]int, len(*observations)+1)
 	good[0] = 0
@@ -102,7 +95,7 @@ func (t *rtree) BestSplitWithPredictor(predictor string) (int, float64) {
 	sumGood := goods[len(goods)-1]
 	countAll := len(goods)
 
-	bestGini, bestIndex := NO_GINI_VALUE, NO_INDEX
+	bestGini, bestIndex := NO_FLOAT, NO_INDEX
 	for splitIndex, goodCount := range goods {
 		countL, goodL := float64(splitIndex), float64(goodCount)
 		countR, goodR := float64(countAll-splitIndex-1), float64(sumGood-goodCount)
@@ -113,10 +106,16 @@ func (t *rtree) BestSplitWithPredictor(predictor string) (int, float64) {
 
 		giniL := 1 - (goodL/countL)*(goodL/countL) - ((countL-goodL)/countL)*((countL-goodL)/countL)
 		giniR := 1 - (goodR/countR)*(goodR/countR) - ((countR-goodR)/countR)*((countR-goodR)/countR)
-		gini := 1.0 / ((countL / giniL) + (countR / giniR))
-		if bestGini == NO_GINI_VALUE || bestGini > gini {
+		tl, tr := (countL / (giniL + 1)), (countR / (giniR + 1))
+
+		gini := 1.0 / (tl + tr)
+
+		if bestGini == NO_FLOAT || bestGini > gini {
+			//			fmt.Printf("Updating bestGini. idx:%d, gl=%f,cl=%f, gr=%f,cr=%f, g=%f\n", splitIndex, giniL, countL, giniR, countR, gini)
 			bestGini = gini
 			bestIndex = splitIndex
+		} else {
+			//			fmt.Printf("NOT Updating bestGini. idx:%d, gl=%f,cl=%f, gr=%f,cr=%f, g=%f\n", splitIndex, giniL, countL, giniR, countR, gini)
 		}
 	}
 
@@ -129,6 +128,7 @@ func (t *rtree) GiniOfSplit(splitIdx int) float64 {
 	return gini(t.Observations[0:splitIdx]) + gini(t.Observations[splitIdx:])
 }
 
+// Helper function to calculate the gini impurity of a set of observations.
 func gini(data []*Observation) float64 {
 	count, count1 := len(data), 0
 	if count == 0 {
@@ -145,6 +145,7 @@ func gini(data []*Observation) float64 {
 	return 1 - p1*p1 - (1-p1)*(1-p1)
 }
 
+// Initializes the node so that it can be safely used within the tree.
 func (t *rtree) InitNode(settings *GrowOptions, depth int) {
 	t.GrowOptions = settings
 	t.Impurity = gini(t.Observations)
@@ -152,6 +153,15 @@ func (t *rtree) InitNode(settings *GrowOptions, depth int) {
 	t.Depth = depth
 }
 
+// Initializes the root node. Note: always call this function before first expanding on a node.
+func (t *rtree) InitRoot(growOptions *GrowOptions, observations []*Observation) *rtree {
+	t.Observations = observations
+	t.InitNode(growOptions, 0)
+	return t
+}
+
+// Expands the given node (if possible and allowed by the provided grow options setting) by finding the best split and performing it.
+// If auto == true, this process is recursive, growing a full tree (one where calling Expand(*) on any of the nodes produces no further change).
 func (t *rtree) Expand(auto bool) {
 	// check for grow-stop conditions
 	if len(t.Observations) < t.GrowOptions.minSplitSize ||
@@ -168,7 +178,7 @@ func (t *rtree) Expand(auto bool) {
 		return
 	}
 
-	fmt.Printf("Splitting node [0..%d] at index %d around %s\n", len(t.Observations)-1, bestIndex, bestPredictor)
+	//	fmt.Printf("Splitting node [0..%d] at index %d around %s\n", len(t.Observations)-1, bestIndex, bestPredictor)
 	//	fmt.Printf(serializeObservations(t.Observations) + "\n")
 	t.SortByPredictor(bestPredictor)
 	t.Split(bestIndex)
@@ -178,11 +188,16 @@ func (t *rtree) Expand(auto bool) {
 	t.Classification = NO_CLASSIFICATION
 
 	if auto {
-		t.Left.Expand(true)
-		t.Right.Expand(true)
+		if t.Left != nil {
+			t.Left.Expand(true)
+		}
+		if t.Right != nil {
+			t.Right.Expand(true)
+		}
 	}
 }
 
+// Returns 0 iff at least half of the observations in this node have target value 0; 1 otherwise.
 func (t *rtree) GetMajorityVote() int {
 	count, count1 := len(t.Observations), 0
 	for _, obs := range t.Observations {
@@ -213,6 +228,7 @@ func (t *rtree) Split(splitIdx int) {
 	t.SetRight(r)
 }
 
+// Returns the classification for a new observation o.
 func (t *rtree) Classify(o *Observation) int {
 	feature, val, classification := t.GetRule()
 
@@ -226,6 +242,9 @@ func (t *rtree) Classify(o *Observation) int {
 	return t.Right.Classify(o)
 }
 
+// Returns a tuple describing the split rule for this node.
+// Format for leaf nodes: <NO_PREDICTOR>,<NO_FLOAT>,<classification at node>
+// Format for internal nodes: <split predictor>,<split value>,<NO_CLASSIFICATION>
 func (t *rtree) GetRule() (string, float64, int) {
 	if t.IsLeaf() {
 		return NO_PREDICTOR, NO_FLOAT, t.Classification

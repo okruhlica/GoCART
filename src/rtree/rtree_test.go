@@ -8,6 +8,7 @@ import "math"
 import "os"
 import "fmt"
 import "encoding/csv"
+import "strings"
 import "strconv"
 
 func cmpSlices(X, Y []*rtree) bool {
@@ -89,18 +90,16 @@ func getSettings(name string) *GrowOptions {
 
 	switch name {
 	case "supergrow":
-		return &GrowOptions{1, 0.0, 10}
+		return &GrowOptions{2, 0.0, 10}
 	case "shallow":
 		return &GrowOptions{25, 0.15, 10}
 	}
 	return getSettings("supergrow")
 }
 func Test_GetRule(tst *testing.T) {
-	t := new(rtree)
 	observations := prepareTestObservations([]string{})
-	t.Observations = *observations
-	t.InitNode(getSettings("supergrow"), 0)
-	t.Expand(true)
+	t := new(rtree)
+	t.InitRoot(getSettings("supergrow"), *observations).Expand(true)
 
 	//test case 1
 	predictor, val, classif := t.GetRule()
@@ -224,7 +223,7 @@ func Test_FindBestSplit(tst *testing.T) {
 	testBestSplitCase(tst, "features={1,2,3}", []string{}, "feature3", 3, 0.0)
 	testBestSplitCase(tst, "features={1,2}", []string{"feature3"}, "feature2", 1, 0.375)
 	testBestSplitCase(tst, "features={1}", []string{"feature2", "feature3"}, "feature1", 3, 0.444444)
-	testBestSplitCase(tst, "features={}", []string{"feature1", "feature2", "feature3"}, NO_PREDICTOR, NO_INDEX, NO_GINI_VALUE)
+	testBestSplitCase(tst, "features={}", []string{"feature1", "feature2", "feature3"}, NO_PREDICTOR, NO_INDEX, NO_FLOAT)
 }
 
 func Test_Split(tst *testing.T) {
@@ -273,7 +272,7 @@ func Test_ExpandNode(tst *testing.T) {
 		len(t.Right.Observations) == 2 {
 		//		tst.Logf("Test expand node passed with tree %s", t.PrintTree(0, true))
 	} else {
-		tst.Errorf("Test expand node failed. Expected to split into (%d,%d) nodes, got (%d,%d). Tree is %s", 3, 2, len(t.Left.Observations), len(t.Right.Observations), t.PrintTree(0, true))
+		tst.Errorf("Test expand node failed. Expected to split into (%d,%d) nodes, got (%d,%d). Tree is %s", 3, 2, len(t.Left.Observations), len(t.Right.Observations) /*, t.PrintTree(0, true)*/)
 	}
 }
 
@@ -373,11 +372,6 @@ func Test_CsvDataSet(tst *testing.T) {
 	tst.Errorf("Success rate is %d/1000", successes)
 }
 
-func stofval(s string) *Value {
-	float, _ := strconv.ParseFloat(s, 64)
-	return &Value{float}
-}
-
 func loadCsvDataset(path string, takeN int, skipN int) *[]*Observation {
 
 	csvfile, err := os.Open(path)
@@ -428,15 +422,16 @@ func loadCsvDataset(path string, takeN int, skipN int) *[]*Observation {
 func Test_FindPredictorSplit(tst *testing.T) {
 	t := new(rtree)
 	observations := prepareTestObservations([]string{})
-	t.Observations = *observations
-	t.InitNode(getSettings("supergrow"), 0)
+	t.InitRoot(getSettings("supergrow"), *observations)
+	fmt.Println("FINDPREDICTORSPLIT")
 	splitIdx, splitGini := t.BestSplitWithPredictor("feature1")
 
-	if splitIdx == 3 && splitGini == gini(t.Observations[:3]) {
+	if splitIdx == 3 && splitGini == 0.0 {
 		tst.Log("Find split test passed.")
 	} else {
 		tst.Errorf("Find split test failed, expected (%f,%d) but got (%f,%d).", 0.0, 3, splitGini, splitIdx)
 	}
+	fmt.Println("/FINDPREDICTORSPLIT")
 }
 
 func Test_CummulativeGoodCounts(tst *testing.T) {
@@ -447,4 +442,22 @@ func Test_CummulativeGoodCounts(tst *testing.T) {
 	} else {
 		tst.Errorf("Cummulative good target calculation failed. Expected[0,1,1,1,2,3], but got [%d,%d,%d,%d,%d].", goods[0], goods[1], goods[2], goods[3], goods[4], goods[5])
 	}
+}
+
+func Test_GetUsedPredictors(tst *testing.T) {
+	t := new(rtree)
+	observations := prepareTestObservations([]string{})
+	t.Observations = *observations
+	t.InitNode(getSettings("supergrow"), 0)
+	t.Expand(true)
+
+	predictors := t.GetUsedPredictors()
+
+	fmt.Println("Used predictors:")
+	printStringList(&predictors)
+	//	t.PrintTree(0, true)
+}
+
+func printStringList(lst *[]string) {
+	fmt.Printf(strings.Join(*lst, ","))
 }

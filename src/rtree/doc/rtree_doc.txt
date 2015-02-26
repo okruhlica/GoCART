@@ -1,0 +1,55 @@
+PACKAGE DOCUMENTATION
+
+package rtree
+    import "/Users/adamokruhlica/vagrant/go/src/rtree"
+
+
+CONSTANTS
+
+const NO_CLASSIFICATION = -1
+
+const NO_FLOAT = 9999999999.9937
+
+const NO_INDEX = -1
+
+const NO_PREDICTOR string = "__noPredictor__"
+
+const TARGET_KEY = "__target"
+
+FUNCTIONS
+
+func IsPredictor(predictor string) bool
+    Returns true iff the given attribute name is a valid for splitting upon.
+    Only attributes that do not start with two underscores can be used as
+    predictors.
+
+func SerializeObservations(observations []*Observation) string
+
+TYPES
+
+type ByPredictorValueFloat struct {
+    Predictor    string
+    Observations *([]*Observation)
+}
+
+func (s ByPredictorValueFloat) Len() int
+
+func (s ByPredictorValueFloat) Less(i, j int) bool
+
+func (s ByPredictorValueFloat) Swap(i, j int)
+
+type GrowOptions struct {
+    // contains filtered or unexported fields
+}
+
+type Observation map[string]*Value
+
+type Value struct {
+    Float float64
+}
+
+SUBDIRECTORIES
+
+	doc
+	testData
+
