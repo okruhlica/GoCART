@@ -2,6 +2,14 @@ package rtree
 
 import "sort"
 import "math"
+import "strings"
+import "fmt"
+
+const NO_PREDICTOR string = "__noPredictor__"
+const NO_FLOAT = 9999999999.9937
+const NO_GINI_VALUE float64 = NO_FLOAT
+const NO_INDEX = -1
+const NO_CLASSIFICATION = -1
 
 type rtree struct {
 	Left, Right, Up *rtree
@@ -11,6 +19,9 @@ type rtree struct {
 	SplitValue     *Value
 	Impurity       float64
 	Classification int
+	Depth          int
+
+	GrowOptions *GrowOptions
 }
 
 func (t *rtree) IsLeaf() bool {
@@ -18,13 +29,13 @@ func (t *rtree) IsLeaf() bool {
 }
 
 func (t *rtree) SetLeft(child *rtree) {
-	child.InitRoot()
+	child.InitNode(t.GrowOptions, t.Depth+1)
 	child.Up = t
 	t.Left = child
 }
 
 func (t *rtree) SetRight(child *rtree) {
-	child.InitRoot()
+	child.InitNode(t.GrowOptions, t.Depth+1)
 	child.Up = t
 	t.Right = child
 }
@@ -45,17 +56,16 @@ func (t *rtree) GetLeaves() []*rtree {
 	return leaves
 }
 
-const NO_PREDICTOR string = "__noPredictor__"
-const NO_GINI_VALUE float64 = 99999999999999.0
-const NO_INDEX = -1
-const NO_CLASSIFICATION = -1
+func isEligiblePredictor(predictor string) bool {
+	return predictor != TARGET_KEY && !strings.HasPrefix(predictor, "__")
+}
 
 func (t *rtree) FindBestSplit() (string, int, float64) {
 	bestPredictor, bestIndex, bestGini := NO_PREDICTOR, NO_INDEX, NO_GINI_VALUE
 	for predictor := range *(t.Observations[0]) {
-		if predictor != TARGET_KEY {
-			thisIdx, thisGini := t.FindPredictorSplit(predictor)
-			if bestPredictor == NO_PREDICTOR || thisGini < bestGini {
+		if isEligiblePredictor(predictor) {
+			thisIdx, thisGini := t.BestSplitWithPredictor(predictor)
+			if bestPredictor == NO_PREDICTOR || (thisGini < bestGini && thisGini != NO_GINI_VALUE) {
 				bestGini, bestIndex, bestPredictor = thisGini, thisIdx, predictor
 			}
 		}
@@ -69,15 +79,47 @@ func (t *rtree) SortByPredictor(predictor string) {
 	sort.Sort(sortFunc)
 }
 
-func (t *rtree) FindPredictorSplit(predictor string) (int, float64) {
-	t.SortByPredictor(predictor)
-	bestGini, bestIndex := NO_GINI_VALUE, NO_INDEX
-	for splitIdx := 0; splitIdx < len(t.Observations); splitIdx++ {
-		gini := t.GiniOfSplit(splitIdx)
-		if gini < bestGini || bestIndex == NO_INDEX {
-			bestGini, bestIndex = gini, splitIdx
+// Calculates the cummulative count of observations with target = 1 up to the given index and returns an array of ints.
+func calculateCummulativeGoodSlice(observations *[]*Observation) *[]int {
+	good := make([]int, len(*observations)+1)
+	good[0] = 0
+	for i, obs := range *observations {
+		good[i+1] = good[i]
+		if (*obs)[TARGET_KEY].Float == 1.0 {
+			good[i+1]++
 		}
 	}
+	return &good
+}
+
+// Given the predictor and a tree node, this function returns the best split of observations according to Gini impurity measure.
+// Output: a tuple containing the best split index and the combined gini impurity measure of the split (sum of impurities of both regions of the split)
+// Side effects: observations in the node are reoredered in a sorted fashion according to values of provided predictor.
+func (t *rtree) BestSplitWithPredictor(predictor string) (int, float64) {
+
+	t.SortByPredictor(predictor)
+	goods := *calculateCummulativeGoodSlice(&t.Observations) // goods[i] <=> count of observations with target=1 in t.Observations[:i]
+	sumGood := goods[len(goods)-1]
+	countAll := len(goods)
+
+	bestGini, bestIndex := NO_GINI_VALUE, NO_INDEX
+	for splitIndex, goodCount := range goods {
+		countL, goodL := float64(splitIndex), float64(goodCount)
+		countR, goodR := float64(countAll-splitIndex-1), float64(sumGood-goodCount)
+
+		if int(countL) < t.GrowOptions.minSplitSize || int(countR) < t.GrowOptions.minSplitSize {
+			continue
+		}
+
+		giniL := 1 - (goodL/countL)*(goodL/countL) - ((countL-goodL)/countL)*((countL-goodL)/countL)
+		giniR := 1 - (goodR/countR)*(goodR/countR) - ((countR-goodR)/countR)*((countR-goodR)/countR)
+		gini := 1.0 / ((countL / giniL) + (countR / giniR))
+		if bestGini == NO_GINI_VALUE || bestGini > gini {
+			bestGini = gini
+			bestIndex = splitIndex
+		}
+	}
+
 	return bestIndex, bestGini
 }
 
@@ -103,21 +145,31 @@ func gini(data []*Observation) float64 {
 	return 1 - p1*p1 - (1-p1)*(1-p1)
 }
 
-func (t *rtree) InitRoot() {
+func (t *rtree) InitNode(settings *GrowOptions, depth int) {
+	t.GrowOptions = settings
 	t.Impurity = gini(t.Observations)
 	t.Classification = t.GetMajorityVote()
+	t.Depth = depth
 }
 
 func (t *rtree) Expand(auto bool) {
-	if len(t.Observations) <= 1 {
+	// check for grow-stop conditions
+	if len(t.Observations) < t.GrowOptions.minSplitSize ||
+		t.Impurity < t.GrowOptions.maxSplitGini ||
+		t.Depth >= t.GrowOptions.maxDepth {
 		t.Classification = t.GetMajorityVote()
 		return
 	}
 
+	// try to find a predictor
 	bestPredictor, bestIndex, _ := t.FindBestSplit()
-	if bestPredictor == NO_PREDICTOR || bestIndex == 0 {
+	if bestPredictor == NO_PREDICTOR || bestIndex == NO_INDEX || bestIndex == 0 || bestIndex == len(t.Observations) {
+		t.Classification = t.GetMajorityVote()
 		return
 	}
+
+	fmt.Printf("Splitting node [0..%d] at index %d around %s\n", len(t.Observations)-1, bestIndex, bestPredictor)
+	//	fmt.Printf(serializeObservations(t.Observations) + "\n")
 	t.SortByPredictor(bestPredictor)
 	t.Split(bestIndex)
 
@@ -159,18 +211,25 @@ func (t *rtree) Split(splitIdx int) {
 
 	t.SetLeft(l)
 	t.SetRight(r)
-
-	t.Left.Impurity = gini(l.Observations)
-	t.Right.Impurity = gini(r.Observations)
 }
 
 func (t *rtree) Classify(o *Observation) int {
-	if t.Classification != NO_CLASSIFICATION {
+	feature, val, classification := t.GetRule()
+
+	if classification != NO_CLASSIFICATION {
 		return t.Classification
 	}
 
-	if (*(*o)[*t.SplitPredictor]).Float < t.SplitValue.Float {
+	if (*(*o)[feature]).Float < val {
 		return t.Left.Classify(o)
 	}
 	return t.Right.Classify(o)
+}
+
+func (t *rtree) GetRule() (string, float64, int) {
+	if t.IsLeaf() {
+		return NO_PREDICTOR, NO_FLOAT, t.Classification
+	} else {
+		return *t.SplitPredictor, t.SplitValue.Float, NO_CLASSIFICATION
+	}
 }
