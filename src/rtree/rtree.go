@@ -4,8 +4,6 @@ import "sort"
 import "math"
 import "strings"
 
-//import "fmt"
-
 const NO_PREDICTOR string = "__noPredictor__"
 const NO_FLOAT = 9999999999.9937
 const NO_INDEX = -1
@@ -53,8 +51,8 @@ func IsPredictor(predictor string) bool {
 // Finds the best possible splitting paramters for the given node by testing all eligible splits on all eligible predictors.
 // Returns: <predictor to split upon>  <index to split upon> <gini impurity of the split>
 // Side-effects: Re-orders the observations within the node.
-func (t *rtree) FindBestSplit() (string, int, float64) {
-	bestPredictor, bestIndex, bestGini := NO_PREDICTOR, NO_INDEX, NO_FLOAT
+func (t *rtree) FindBestSplit() (bestPredictor string, bestIndex int, bestGini float64) {
+	bestPredictor, bestIndex, bestGini = NO_PREDICTOR, NO_INDEX, NO_FLOAT
 	for predictor := range *(t.Observations[0]) {
 		if IsPredictor(predictor) {
 			thisIdx, thisGini := t.BestSplitWithPredictor(predictor)
@@ -63,7 +61,7 @@ func (t *rtree) FindBestSplit() (string, int, float64) {
 			}
 		}
 	}
-	return bestPredictor, bestIndex, bestGini
+	return
 }
 
 // Sorts the observations in this node according to the values of the given predictor.
@@ -72,54 +70,8 @@ func (t *rtree) SortByPredictor(predictor string) {
 	sort.Sort(sortFunc)
 }
 
-// Returns the cummulative count of observations with target = 1 up to the given index (result is an array of ints).
-func calculateCummulativeGoodSlice(observations *[]*Observation) *[]int {
-	good := make([]int, len(*observations)+1)
-	good[0] = 0
-	for i, obs := range *observations {
-		good[i+1] = good[i]
-		if (*obs)[TARGET_KEY].Float == 1.0 {
-			good[i+1]++
-		}
-	}
-	return &good
-}
-
-// Given the predictor and a tree node, this function returns the best split of observations according to Gini impurity measure.
-// Output: a tuple containing the best split index and the combined gini impurity measure of the split (sum of impurities of both regions of the split)
-// Side effects: observations in the node are reoredered in a sorted fashion according to values of provided predictor.
-func (t *rtree) BestSplitWithPredictor(predictor string) (int, float64) {
-
-	t.SortByPredictor(predictor)
-	goods := *calculateCummulativeGoodSlice(&t.Observations) // goods[i] <=> count of observations with target=1 in t.Observations[:i]
-	sumGood := goods[len(goods)-1]
-	countAll := len(goods)
-
-	bestGini, bestIndex := NO_FLOAT, NO_INDEX
-	for splitIndex, goodCount := range goods {
-		countL, goodL := float64(splitIndex), float64(goodCount)
-		countR, goodR := float64(countAll-splitIndex-1), float64(sumGood-goodCount)
-
-		if int(countL) < t.GrowOptions.minSplitSize || int(countR) < t.GrowOptions.minSplitSize {
-			continue
-		}
-
-		giniL := 1 - (goodL/countL)*(goodL/countL) - ((countL-goodL)/countL)*((countL-goodL)/countL)
-		giniR := 1 - (goodR/countR)*(goodR/countR) - ((countR-goodR)/countR)*((countR-goodR)/countR)
-		tl, tr := (countL / (giniL + 1)), (countR / (giniR + 1))
-
-		gini := 1.0 / (tl + tr)
-
-		if bestGini == NO_FLOAT || bestGini > gini {
-			//			fmt.Printf("Updating bestGini. idx:%d, gl=%f,cl=%f, gr=%f,cr=%f, g=%f\n", splitIndex, giniL, countL, giniR, countR, gini)
-			bestGini = gini
-			bestIndex = splitIndex
-		} else {
-			//			fmt.Printf("NOT Updating bestGini. idx:%d, gl=%f,cl=%f, gr=%f,cr=%f, g=%f\n", splitIndex, giniL, countL, giniR, countR, gini)
-		}
-	}
-
-	return bestIndex, bestGini
+func (t *rtree) BestSplitWithPredictor(predictor string) (splitAtIndex int, purityAtSplit float64) {
+	return t.GrowOptions.purityFunction(predictor, t)
 }
 
 // Given the desired split position and an indicator which target class should be assigned to
@@ -245,7 +197,7 @@ func (t *rtree) Classify(o *Observation) int {
 // Returns a tuple describing the split rule for this node.
 // Format for leaf nodes: <NO_PREDICTOR>,<NO_FLOAT>,<classification at node>
 // Format for internal nodes: <split predictor>,<split value>,<NO_CLASSIFICATION>
-func (t *rtree) GetRule() (string, float64, int) {
+func (t *rtree) GetRule() (predictor string, splitValue float64, classification int) {
 	if t.IsLeaf() {
 		return NO_PREDICTOR, NO_FLOAT, t.Classification
 	} else {

@@ -87,15 +87,15 @@ func Test_GetLeaves(tst *testing.T) {
 }
 
 func getSettings(name string) *GrowOptions {
-
 	switch name {
 	case "supergrow":
-		return &GrowOptions{2, 0.0, 10}
+		return &GrowOptions{2, 0.0, 10, GiniPurity}
 	case "shallow":
-		return &GrowOptions{25, 0.15, 10}
+		return &GrowOptions{25, 0.15, 10, GiniPurity}
 	}
 	return getSettings("supergrow")
 }
+
 func Test_GetRule(tst *testing.T) {
 	observations := prepareTestObservations([]string{})
 	t := new(rtree)
@@ -215,15 +215,30 @@ func Test_Classify(tst *testing.T) {
 		tst.Logf("Classification test passed (classification = 1).")
 	} else {
 		tst.Errorf("Classification test failed (expected = %d, was %d).", 1-outcome, outcome)
-		//t.PrintTree(0, true)
 	}
 }
 
 func Test_FindBestSplit(tst *testing.T) {
 	testBestSplitCase(tst, "features={1,2,3}", []string{}, "feature3", 3, 0.0)
-	testBestSplitCase(tst, "features={1,2}", []string{"feature3"}, "feature2", 1, 0.375)
-	testBestSplitCase(tst, "features={1}", []string{"feature2", "feature3"}, "feature1", 3, 0.444444)
+	testBestSplitCase(tst, "features={1,2}", []string{"feature3"}, "feature1", 3, 0.222222)
+	testBestSplitCase(tst, "features={1}", []string{"feature2", "feature3"}, "feature1", 3, 0.222222)
 	testBestSplitCase(tst, "features={}", []string{"feature1", "feature2", "feature3"}, NO_PREDICTOR, NO_INDEX, NO_FLOAT)
+	testBestSplitCase(tst, "features={1}", []string{"feature1", "feature3"}, "feature2", 3, 0.222222)
+}
+
+func testBestSplitCase(tst *testing.T, testName string, excludeFeatures []string, expectedPredictor string, expectedIndex int, expectedGini float64) {
+	t := new(rtree)
+
+	observations := prepareTestObservations(excludeFeatures)
+	t.Observations = *observations
+	t.InitNode(getSettings("supergrow"), 0)
+	predictor, index, gini := t.FindBestSplit()
+
+	if predictor == expectedPredictor && index == expectedIndex && math.Abs(gini-expectedGini) < 0.001 {
+		tst.Logf("Find best split test '%s' passed.", testName)
+	} else {
+		tst.Errorf("Find best split test '%s' failed. Expected (%s,%d,%f) but got (%s,%d,%f).", testName, expectedPredictor, expectedIndex, expectedGini, predictor, index, gini)
+	}
 }
 
 func Test_Split(tst *testing.T) {
@@ -243,22 +258,6 @@ func Test_Split(tst *testing.T) {
 	} else {
 		tst.Errorf("Test split node failed. Expected %p, got %p. Tree is %s", t.Observations[0], t.Left.Observations[0] /*, t.PrintTree(0, true)*/)
 	}
-}
-
-func testBestSplitCase(tst *testing.T, testName string, excludeFeatures []string, expectedPredictor string, expectedIndex int, expectedGini float64) {
-	t := new(rtree)
-
-	observations := prepareTestObservations(excludeFeatures)
-	t.Observations = *observations
-	t.InitNode(getSettings("supergrow"), 0)
-	predictor, index, gini := t.FindBestSplit()
-
-	if predictor == expectedPredictor && index == expectedIndex && math.Abs(gini-expectedGini) < 0.001 {
-		tst.Logf("Find best split test '%s' passed.", testName)
-	} else {
-		tst.Errorf("Find best split test '%s' failed. Expected (%s,%d,%f) but got (%s,%d,%f).", testName, expectedPredictor, expectedIndex, expectedGini, predictor, index, gini)
-	}
-
 }
 
 func Test_ExpandNode(tst *testing.T) {
@@ -423,15 +422,13 @@ func Test_FindPredictorSplit(tst *testing.T) {
 	t := new(rtree)
 	observations := prepareTestObservations([]string{})
 	t.InitRoot(getSettings("supergrow"), *observations)
-	fmt.Println("FINDPREDICTORSPLIT")
 	splitIdx, splitGini := t.BestSplitWithPredictor("feature1")
 
-	if splitIdx == 3 && splitGini == 0.0 {
+	if splitIdx == 3 && math.Abs(splitGini-0.222222) < 0.001 {
 		tst.Log("Find split test passed.")
 	} else {
-		tst.Errorf("Find split test failed, expected (%f,%d) but got (%f,%d).", 0.0, 3, splitGini, splitIdx)
+		tst.Errorf("Find split test failed, expected (%f,%d) but got (%f,%d).", 0.222222, 3, splitGini, splitIdx)
 	}
-	fmt.Println("/FINDPREDICTORSPLIT")
 }
 
 func Test_CummulativeGoodCounts(tst *testing.T) {
@@ -446,18 +443,22 @@ func Test_CummulativeGoodCounts(tst *testing.T) {
 
 func Test_GetUsedPredictors(tst *testing.T) {
 	t := new(rtree)
-	observations := prepareTestObservations([]string{})
-	t.Observations = *observations
-	t.InitNode(getSettings("supergrow"), 0)
-	t.Expand(true)
 
+	// Case 1
+	t.InitRoot(getSettings("supergrow"), *prepareTestObservations([]string{})).Expand(true)
 	predictors := t.GetUsedPredictors()
+	if len(predictors) == 1 && predictors[0] == "feature3" {
+		tst.Log("[test/GetUsedPredictors] Case 1 passed.")
+	} else {
+		tst.Errorf("[test/GetUsedPredictors] Case 1 failed.")
+	}
 
-	fmt.Println("Used predictors:")
-	printStringList(&predictors)
-	//	t.PrintTree(0, true)
-}
-
-func printStringList(lst *[]string) {
-	fmt.Printf(strings.Join(*lst, ","))
+	// Case 2
+	t.InitRoot(getSettings("supergrow"), *prepareTestObservations([]string{"feature3"})).Expand(true)
+	predictors = t.GetUsedPredictors()
+	if len(predictors) == 1 && predictors[0] == "feature1" {
+		tst.Log("[test/GetUsedPredictors] Case 2 passed.")
+	} else {
+		tst.Errorf("[test/GetUsedPredictors] Case 2 failed.")
+	}
 }
