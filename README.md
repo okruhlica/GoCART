@@ -1,5 +1,11 @@
 # GoCART
-Regression tree classifier implementation in Go language.
+Decision tree classifier implementation in Go language.
+
+== Input == 
+float64 predictor values, categorical (0/1) target values
+
+== Output == 
+Classifier.
 
 Usage:
 
