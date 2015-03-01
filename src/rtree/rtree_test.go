@@ -1,17 +1,14 @@
 package rtree
 
 import "testing"
-
 import "sort"
-
 import "math"
 import "os"
 import "fmt"
 import "encoding/csv"
-import "strings"
 import "strconv"
 
-func cmpSlices(X, Y []*rtree) bool {
+func cmpSlices(X, Y []*Rtree) bool {
 	for _, y := range Y {
 		found := false
 		for _, x := range X {
@@ -27,9 +24,12 @@ func cmpSlices(X, Y []*rtree) bool {
 }
 
 func Test_IsLeaf(tst *testing.T) {
-	t := new(rtree)
-	t1 := new(rtree)
-	t2 := new(rtree)
+	t := new(Rtree)
+	t1 := new(Rtree)
+	t2 := new(Rtree)
+	t.InitRoot(getSettings("supergrow"), []*Observation{})
+	t1.InitRoot(getSettings("supergrow"), []*Observation{})
+	t2.InitRoot(getSettings("supergrow"), []*Observation{})
 
 	if t.IsLeaf() {
 		tst.Log("[cart/Test_IsLeaf] Leaf test 1 passed (isLeaf=true)")
@@ -37,7 +37,7 @@ func Test_IsLeaf(tst *testing.T) {
 		tst.Error("[cart/Test_IsLeaf] Leaf test 1 failed (isLeaf=true)")
 	}
 
-	t.SetLeft(t1)
+	t.setLeft(t1)
 	if t.Left != t1 {
 		tst.Error("[cart/Test_IsLeaf] Left child was not added properly.")
 	}
@@ -48,7 +48,7 @@ func Test_IsLeaf(tst *testing.T) {
 		tst.Error("[cart/Test_IsLeaf] Leaf test 2 failed (isLeaf=false)")
 	}
 
-	t.SetLeft(t2)
+	t.setLeft(t2)
 
 	if !t.IsLeaf() {
 		tst.Log("[cart/Test_IsLeaf] Leaf test 3 passed (isLeaf=false)")
@@ -58,28 +58,33 @@ func Test_IsLeaf(tst *testing.T) {
 }
 
 func Test_GetLeaves(tst *testing.T) {
-	t := new(rtree)
-	t1 := new(rtree)
-	t2 := new(rtree)
-	t3 := new(rtree)
+	t := new(Rtree)
+	t1 := new(Rtree)
+	t2 := new(Rtree)
+	t3 := new(Rtree)
 
-	if cmpSlices(t.GetLeaves(), []*rtree{t}) {
+	t.InitRoot(getSettings("supergrow"), []*Observation{})
+	t1.InitRoot(getSettings("supergrow"), []*Observation{})
+	t2.InitRoot(getSettings("supergrow"), []*Observation{})
+	t3.InitRoot(getSettings("supergrow"), []*Observation{})
+
+	if cmpSlices(t.GetLeaves(), []*Rtree{t}) {
 		tst.Log("[cart/Test_GetLeaves] Get leaves test 1 passed (GetLeaves=[])")
 	} else {
 		tst.Error("[cart/Test_GetLeaves] Get leaves test 1 failed (GetLeaves=[])")
 	}
 
-	t.SetLeft(t1)
-	if cmpSlices(t.GetLeaves(), []*rtree{t1}) {
+	t.setLeft(t1)
+	if cmpSlices(t.GetLeaves(), []*Rtree{t1}) {
 		tst.Log("[cart/Test_GetLeaves] Get leaves test 2 passed (GetLeaves=[t1])")
 	} else {
 		tst.Error("[cart/Test_GetLeaves] Get leaves test 2 failed (GetLeaves=[t1])")
 	}
 
-	t.SetRight(t2)
-	t1.SetRight(t3)
+	t.setRight(t2)
+	t1.setRight(t3)
 
-	if cmpSlices(t.GetLeaves(), []*rtree{t2, t3}) {
+	if cmpSlices(t.GetLeaves(), []*Rtree{t2, t3}) {
 		tst.Log("[cart/Test_GetLeaves] Get leaves test 3 passed (GetLeaves=[t2,t3])")
 	} else {
 		tst.Error("[cart/Test_GetLeaves] Get leaves test 3 failed (GetLeaves=[t2,t3])")
@@ -89,16 +94,16 @@ func Test_GetLeaves(tst *testing.T) {
 func getSettings(name string) *GrowOptions {
 	switch name {
 	case "supergrow":
-		return &GrowOptions{2, 0.0, 10, GiniPurity}
+		return &GrowOptions{2, 0.0, 10, GiniSplitPurity, GiniPurity}
 	case "shallow":
-		return &GrowOptions{25, 0.15, 10, GiniPurity}
+		return &GrowOptions{25, 0.15, 10, GiniSplitPurity, GiniPurity}
 	}
 	return getSettings("supergrow")
 }
 
 func Test_GetRule(tst *testing.T) {
 	observations := prepareTestObservations([]string{})
-	t := new(rtree)
+	t := new(Rtree)
 	t.InitRoot(getSettings("supergrow"), *observations).Expand(true)
 
 	//test case 1
@@ -181,12 +186,12 @@ func prepareTestObservations(excludeFeatures []string) *[]*Observation {
 
 func Test_Gini(tst *testing.T) {
 	observations := *prepareTestObservations([]string{})
-	assertGini(tst, "[:0]", gini(observations[:0]), 0.0)
-	assertGini(tst, "[:1]", gini(observations[:1]), 0.0)
-	assertGini(tst, "[:2]", gini(observations[:2]), 0.5)
-	assertGini(tst, "[:3]", gini(observations[:3]), 0.44444)
-	assertGini(tst, "[:4]", gini(observations[:4]), 0.5)
-	assertGini(tst, "[:4]", gini(observations[:5]), 0.48)
+	assertGini(tst, "[:0]", GiniPurity(observations[:0]), 0.0)
+	assertGini(tst, "[:1]", GiniPurity(observations[:1]), 0.0)
+	assertGini(tst, "[:2]", GiniPurity(observations[:2]), 0.5)
+	assertGini(tst, "[:3]", GiniPurity(observations[:3]), 0.44444)
+	assertGini(tst, "[:4]", GiniPurity(observations[:4]), 0.5)
+	assertGini(tst, "[:4]", GiniPurity(observations[:5]), 0.48)
 }
 
 func assertGini(tst *testing.T, testLabel string, err float64, exp_err float64) {
@@ -198,10 +203,10 @@ func assertGini(tst *testing.T, testLabel string, err float64, exp_err float64) 
 }
 
 func Test_Classify(tst *testing.T) {
-	t := new(rtree)
+	t := new(Rtree)
 	observations := prepareTestObservations([]string{})
 	t.Observations = *observations
-	t.InitNode(getSettings("supergrow"), 0)
+	t.initNode(getSettings("supergrow"), 0)
 	t.Expand(true)
 
 	obsNew := Observation{
@@ -227,11 +232,11 @@ func Test_FindBestSplit(tst *testing.T) {
 }
 
 func testBestSplitCase(tst *testing.T, testName string, excludeFeatures []string, expectedPredictor string, expectedIndex int, expectedGini float64) {
-	t := new(rtree)
+	t := new(Rtree)
 
 	observations := prepareTestObservations(excludeFeatures)
 	t.Observations = *observations
-	t.InitNode(getSettings("supergrow"), 0)
+	t.initNode(getSettings("supergrow"), 0)
 	predictor, index, gini := t.FindBestSplit()
 
 	if predictor == expectedPredictor && index == expectedIndex && math.Abs(gini-expectedGini) < 0.001 {
@@ -242,10 +247,11 @@ func testBestSplitCase(tst *testing.T, testName string, excludeFeatures []string
 }
 
 func Test_Split(tst *testing.T) {
-	t := new(rtree)
+	t := new(Rtree)
 	observations := prepareTestObservations([]string{})
-	t.Observations = *observations
-	t.Split(2)
+
+	t.InitRoot(getSettings("supergrow"), *observations)
+	t.split(2)
 
 	if t.Left.Observations[0] == t.Observations[0] &&
 		t.Left.Observations[1] == t.Observations[1] &&
@@ -261,10 +267,10 @@ func Test_Split(tst *testing.T) {
 }
 
 func Test_ExpandNode(tst *testing.T) {
-	t := new(rtree)
+	t := new(Rtree)
 	observations := prepareTestObservations([]string{})
 	t.Observations = *observations
-	t.InitNode(getSettings("supergrow"), 0)
+	t.initNode(getSettings("supergrow"), 0)
 	t.Expand(true)
 
 	if len(t.Left.Observations) == 3 &&
@@ -278,33 +284,33 @@ func Test_ExpandNode(tst *testing.T) {
 func BenchmarkExpandNode(b *testing.B) {
 	observations := prepareTestObservations([]string{})
 	for n := 0; n < b.N; n++ {
-		t := new(rtree)
+		t := new(Rtree)
 		t.Observations = *observations
-		t.InitNode(getSettings("supergrow"), 0)
+		t.initNode(getSettings("supergrow"), 0)
 		t.Expand(true)
 	}
 }
 
 func Test_GetMajorityVote(tst *testing.T) {
-	t := new(rtree)
+	t := new(Rtree)
 
 	//Test case 1
 	observations := prepareTestObservations([]string{})
 	t.Observations = *observations
-	t.InitNode(getSettings("supergrow"), 0)
-	if t.GetMajorityVote() == 1 {
+	t.initNode(getSettings("supergrow"), 0)
+	if t.getMajorityVote() == 1 {
 		tst.Logf("Test majority vote passed.")
 	} else {
-		tst.Errorf("Test majority vote failed. Expected 1, got %d", t.GetMajorityVote())
+		tst.Errorf("Test majority vote failed. Expected 1, got %d", t.getMajorityVote())
 	}
 
 	//Test case 2
 	t.Observations = (*observations)[:3]
-	t.InitNode(getSettings("supergrow"), 0)
-	if t.GetMajorityVote() == 0 {
+	t.initNode(getSettings("supergrow"), 0)
+	if t.getMajorityVote() == 0 {
 		tst.Logf("Test majority vote passed.")
 	} else {
-		tst.Errorf("Test majority vote failed. Expected 0, got %d", t.GetMajorityVote())
+		tst.Errorf("Test majority vote failed. Expected 0, got %d", t.getMajorityVote())
 	}
 }
 
@@ -353,13 +359,13 @@ func Test_SortFunc(tst *testing.T) {
 }
 
 func Test_CsvDataSet(tst *testing.T) {
-	t := new(rtree)
-	obs := loadCsvDataset("testData/data2.csv", 90000, 0)
+	t := new(Rtree)
+	obs := loadCsvDataset("test_data/data2.csv", 90000, 0)
 	t.Observations = *obs
-	t.InitNode(getSettings("shallow"), 0)
+	t.initNode(getSettings("shallow"), 0)
 	t.Expand(true)
 
-	obss := loadCsvDataset("testData/data2.csv", 10000, 90000)
+	obss := loadCsvDataset("test_data/data2.csv", 10000, 90000)
 	successes := 0
 	for _, obs := range *obss {
 		if float64(t.Classify(obs)) == (*(*obs)[TARGET_KEY]).Float {
@@ -367,8 +373,12 @@ func Test_CsvDataSet(tst *testing.T) {
 		}
 	}
 
-	t.PrintTree(0, false)
-	tst.Errorf("Success rate is %d/1000", successes)
+	//	t.PrintTree(0, false)
+	if successes < 9000 {
+		tst.Errorf("Success rate is %d/1000 (and it sucks)", successes)
+	} else {
+		tst.Logf("Success rate is %d/1000", successes)
+	}
 }
 
 func loadCsvDataset(path string, takeN int, skipN int) *[]*Observation {
@@ -419,10 +429,10 @@ func loadCsvDataset(path string, takeN int, skipN int) *[]*Observation {
 }
 
 func Test_FindPredictorSplit(tst *testing.T) {
-	t := new(rtree)
+	t := new(Rtree)
 	observations := prepareTestObservations([]string{})
 	t.InitRoot(getSettings("supergrow"), *observations)
-	splitIdx, splitGini := t.BestSplitWithPredictor("feature1")
+	splitIdx, splitGini := t.bestSplitWithPredictor("feature1")
 
 	if splitIdx == 3 && math.Abs(splitGini-0.222222) < 0.001 {
 		tst.Log("Find split test passed.")
@@ -442,7 +452,7 @@ func Test_CummulativeGoodCounts(tst *testing.T) {
 }
 
 func Test_GetUsedPredictors(tst *testing.T) {
-	t := new(rtree)
+	t := new(Rtree)
 
 	// Case 1
 	t.InitRoot(getSettings("supergrow"), *prepareTestObservations([]string{})).Expand(true)
@@ -459,6 +469,6 @@ func Test_GetUsedPredictors(tst *testing.T) {
 	if len(predictors) == 1 && predictors[0] == "feature1" {
 		tst.Log("[test/GetUsedPredictors] Case 2 passed.")
 	} else {
-		tst.Errorf("[test/GetUsedPredictors] Case 2 failed.")
+		tst.Errorf("[test/GetUsedPredictors] Case 2 failed (expected 1 predictor, got %d).", len(predictors))
 	}
 }

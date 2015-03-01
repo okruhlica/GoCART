@@ -1,24 +1,50 @@
 package rtree
 
-type PurityFunction func(predictor string, t *rtree) (bestSplitIndex int, purityAtSplit float64)
+type SplitPurityFunction func(predictor string, t *Rtree) (bestSplitIndex int, purityAtSplit float64)
+type PurityFunction func(observations []*Observation) float64
 
 // ====== Gini impurity measure
+
+// Helper function to calculate the gini impurity of a set of observations.
+func GiniPurity(data []*Observation) float64 {
+	count, count1 := len(data), 0
+	if count == 0 {
+		return 0.0
+	}
+
+	for _, obs := range data {
+		if (*obs)[TARGET_KEY].Float == 0.0 {
+			count1++
+		}
+	}
+
+	p1 := float64(count1) / float64(count)
+	return 1 - p1*p1 - (1-p1)*(1-p1)
+}
 
 // Given the predictor and a tree node, this function returns the best split of observations according to Gini impurity measure.
 // Output: a tuple containing the best split index and the combined gini impurity measure of the split (sum of impurities of both regions of the split)
 // Side effects: observations in the node are reoredered in a sorted fashion according to values of provided predictor.
-func GiniPurity(predictor string, t *rtree) (bestSplitIndex int, purityAtSplit float64) {
-	t.SortByPredictor(predictor)
+func GiniSplitPurity(predictor string, t *Rtree) (bestSplitIndex int, purityAtSplit float64) {
+	t.sortByPredictor(predictor)
 	goods := *calculateCummulativeGoodSlice(&t.Observations) // goods[i] <=> count of observations with target=1 in t.Observations[:i]
 	sumGood := goods[len(goods)-1]
 	countAll := len(goods)
 
 	purityAtSplit, bestSplitIndex = NO_FLOAT, NO_INDEX
 	for splitIndex, goodCount := range goods {
+
+		if splitIndex < len(t.Observations)-1 {
+			thisVal, nextVal := (*t.Observations[splitIndex])[predictor].Float, (*t.Observations[splitIndex+1])[predictor].Float
+			if thisVal == nextVal { // only care about ends of "runs"
+				continue
+			}
+		}
+
 		countL, goodL := float64(splitIndex), float64(goodCount)
 		countR, goodR := float64(countAll-splitIndex-1), float64(sumGood-goodCount)
 
-		if int(countL) < t.GrowOptions.minSplitSize || int(countR) < t.GrowOptions.minSplitSize {
+		if int(countL) < t.GrowOptions.MinSplitSize || int(countR) < t.GrowOptions.MinSplitSize {
 			continue
 		}
 

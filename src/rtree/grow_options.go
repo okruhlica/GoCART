@@ -1,8 +1,9 @@
 package rtree
 
 type GrowOptions struct {
-	minSplitSize   int
-	maxSplitGini   float64
-	maxDepth       int
-	purityFunction PurityFunction
+	MinSplitSize  int
+	MaxSplitGini  float64
+	MaxDepth      int
+	SplitPurityFn SplitPurityFunction
+	DataPurityFn  PurityFunction
 }
