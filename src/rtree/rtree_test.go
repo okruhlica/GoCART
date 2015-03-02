@@ -92,11 +92,12 @@ func Test_GetLeaves(tst *testing.T) {
 }
 
 func getSettings(name string) *GrowOptions {
+	giniStrategy := GiniPurityStrategy{}
 	switch name {
 	case "supergrow":
-		return &GrowOptions{2, 0.0, 10, GiniSplitPurity, GiniPurity}
+		return &GrowOptions{2, 0.0, 10, giniStrategy}
 	case "shallow":
-		return &GrowOptions{25, 0.15, 10, GiniSplitPurity, GiniPurity}
+		return &GrowOptions{25, 0.15, 10, &GiniPurityStrategy{}}
 	}
 	return getSettings("supergrow")
 }
@@ -185,13 +186,14 @@ func prepareTestObservations(excludeFeatures []string) *[]*Observation {
 }
 
 func Test_Gini(tst *testing.T) {
+	gini := GiniPurityStrategy{}
 	observations := *prepareTestObservations([]string{})
-	assertGini(tst, "[:0]", GiniPurity(observations[:0]), 0.0)
-	assertGini(tst, "[:1]", GiniPurity(observations[:1]), 0.0)
-	assertGini(tst, "[:2]", GiniPurity(observations[:2]), 0.5)
-	assertGini(tst, "[:3]", GiniPurity(observations[:3]), 0.44444)
-	assertGini(tst, "[:4]", GiniPurity(observations[:4]), 0.5)
-	assertGini(tst, "[:4]", GiniPurity(observations[:5]), 0.48)
+	assertGini(tst, "[:0]", gini.GetSlicePurity(observations[:0]), 0.0)
+	assertGini(tst, "[:1]", gini.GetSlicePurity(observations[:1]), 0.0)
+	assertGini(tst, "[:2]", gini.GetSlicePurity(observations[:2]), 0.5)
+	assertGini(tst, "[:3]", gini.GetSlicePurity(observations[:3]), 0.44444)
+	assertGini(tst, "[:4]", gini.GetSlicePurity(observations[:4]), 0.5)
+	assertGini(tst, "[:4]", gini.GetSlicePurity(observations[:5]), 0.48)
 }
 
 func assertGini(tst *testing.T, testLabel string, err float64, exp_err float64) {

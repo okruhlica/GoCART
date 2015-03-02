@@ -5,7 +5,7 @@ Decision tree classifier implementation in Go language.
 float64 predictor values, categorical (0/1) target values
 
 == Output == 
-Classifier.
+Classifier
 
 Usage:
 

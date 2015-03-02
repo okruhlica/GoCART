@@ -72,14 +72,14 @@ func (t *Rtree) sortByPredictor(predictor string) {
 }
 
 func (t *Rtree) bestSplitWithPredictor(predictor string) (splitAtIndex int, purityAtSplit float64) {
-	return t.GrowOptions.SplitPurityFn(predictor, t)
+	return t.GrowOptions.SplitStrategy.GetSplitPurity(predictor, t)
 }
 
 // Initializes the node so that it can be safely used within the tree.
 func (t *Rtree) initNode(settings *GrowOptions, depth int) {
 	t.GrowOptions = settings
-	fn := settings.DataPurityFn
-	t.Impurity = fn(t.Observations)
+	fn := settings.SplitStrategy.GetSlicePurity
+	t.Impurity = fn(t.Observations[:])
 	t.Classification = t.getMajorityVote()
 	t.Depth = depth
 }

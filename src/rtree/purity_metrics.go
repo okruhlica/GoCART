@@ -1,12 +1,19 @@
 package rtree
 
-type SplitPurityFunction func(predictor string, t *Rtree) (bestSplitIndex int, purityAtSplit float64)
-type PurityFunction func(observations []*Observation) float64
+// Blueprint interface for the purity measure calculation.
+type PurityMetricStrategy interface {
+	GetSplitPurity(predictor string, t *Rtree) (bestSplitIndex int, purityAtSplit float64)
+	GetSlicePurity(data []*Observation) (slicePurity float64)
+}
 
-// ====== Gini impurity measure
+// --------------------------------------------------------------------------------------------------
+
+// Gini purity measure
+type GiniPurityStrategy struct {
+}
 
 // Helper function to calculate the gini impurity of a set of observations.
-func GiniPurity(data []*Observation) float64 {
+func (g GiniPurityStrategy) GetSlicePurity(data []*Observation) (slicePurity float64) {
 	count, count1 := len(data), 0
 	if count == 0 {
 		return 0.0
@@ -25,7 +32,7 @@ func GiniPurity(data []*Observation) float64 {
 // Given the predictor and a tree node, this function returns the best split of observations according to Gini impurity measure.
 // Output: a tuple containing the best split index and the combined gini impurity measure of the split (sum of impurities of both regions of the split)
 // Side effects: observations in the node are reoredered in a sorted fashion according to values of provided predictor.
-func GiniSplitPurity(predictor string, t *Rtree) (bestSplitIndex int, purityAtSplit float64) {
+func (g GiniPurityStrategy) GetSplitPurity(predictor string, t *Rtree) (bestSplitIndex int, purityAtSplit float64) {
 	t.sortByPredictor(predictor)
 	goods := *calculateCummulativeGoodSlice(&t.Observations) // goods[i] <=> count of observations with target=1 in t.Observations[:i]
 	sumGood := goods[len(goods)-1]
@@ -74,4 +81,4 @@ func calculateCummulativeGoodSlice(observations *[]*Observation) *[]int {
 	return &good
 }
 
-// ======
+// --------------------------------------------------------------------------------------------------
