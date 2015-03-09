@@ -1,4 +1,4 @@
-package rtree
+package decision_tree
 
 type ByPredictorValueFloat struct {
 	Predictor    string
@@ -14,5 +14,7 @@ func (s ByPredictorValueFloat) Swap(i, j int) {
 }
 
 func (s ByPredictorValueFloat) Less(i, j int) bool {
-	return (*(*s.Observations)[i])[s.Predictor].Float < (*(*s.Observations)[j])[s.Predictor].Float
+	obsi, obsj := (*(*s.Observations)[i]), (*(*s.Observations)[j])
+	isLess, _ := _lt(obsi[s.Predictor], obsj[s.Predictor])
+	return isLess
 }

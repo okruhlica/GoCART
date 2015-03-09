@@ -1,0 +1,129 @@
+PACKAGE DOCUMENTATION
+
+package decision_tree
+    import "decision_tree"
+
+
+CONSTANTS
+
+const NO_FLOAT = 9999999999.9937
+
+const NO_INDEX = -1
+
+const NO_PREDICTOR string = "__noPredictor__"
+
+FUNCTIONS
+
+func SerializeObservations(observations []*Observation, targetKey string) (out string)
+
+TYPES
+
+type AbstractPurityMetric interface {
+    GetSplitPurity(predictor string, targetAttribute string, t *DecisionTree) (bestSplitIndex int, purityAtSplit float64, err error)
+    GetSlicePurity(data []*Observation, targetAttribute string) (slicePurity float64, err error)
+}
+    Blueprint interface for the purity measure calculation.
+
+type ByPredictorValueFloat struct {
+    Predictor    string
+    Observations *([]*Observation)
+}
+
+func (s ByPredictorValueFloat) Len() int
+
+func (s ByPredictorValueFloat) Less(i, j int) bool
+
+func (s ByPredictorValueFloat) Swap(i, j int)
+
+type DecisionTree struct {
+    Left, Right  *DecisionTree  // Pointers to parent and children nodes
+    Observations []*Observation // A slice of observations relevant to this node
+    Options      *Options       // Settings governing the tree expansion and related stop-conditions.
+
+    Depth    int     // Distance from tree root
+    Impurity float64 // Gini measure of impurity of the node (less is better)
+
+    SplitPredictor *string // The predictor (attribute/feature) to split on in this node. Value in leaves is NO_PREDICTOR
+    SplitValue     Value   // The value of the split predictor to split on; smaller valued obserations continue to the left subtree, larger to the right subtree
+    Classification Value   // For leaf nodes denotes the predicted class; value is NO_CLASSIFICATION in internal nodes
+}
+    Represents a classification tree (tree node)
+
+func (t *DecisionTree) Classify(o *Observation) Value
+    Returns the classification for a new observation o.
+
+func (t *DecisionTree) Expand(auto bool) (err error)
+    Expands the given node (if possible and allowed by the provided grow
+    options setting) by finding the best split and performing it. If auto ==
+    true, this process is recursive, growing a full tree (one where calling
+    Expand(*) on any of the nodes produces no further change).
+
+func (t *DecisionTree) FindBestSplit() (bestPredictor string, bestIndex int, bestPurity float64, err error)
+    Finds the best possible splitting parameters for the given node by
+    testing all eligible splits on all eligible predictors. Returns:
+    <predictor to split upon> <index to split upon> <gini impurity of the
+    split> Side-effects: Re-orders the observations within the node.
+
+func (t *DecisionTree) GetLeaves() []*DecisionTree
+    Returns a list of leaf nodes for the given tree.
+
+func (t *DecisionTree) GetRule() (predictor string, splitValue Value, classification Value)
+    Returns a tuple describing the split rule for this node. Format for leaf
+    nodes: <NO_PREDICTOR>,<NO_FLOAT>,<classification at node> Format for
+    internal nodes: <split predictor>,<split value>,<NO_CLASSIFICATION>
+
+func (t *DecisionTree) GetSerializedModel() string
+
+func (t *DecisionTree) GetUsedPredictors() []string
+    Returns the list of predictors used in the given tree for
+    decision-making.
+
+func (t *DecisionTree) InitRoot(growOptions *Options, observations []*Observation) error
+    Initializes the root node. Note: always call this function before first
+    expanding on a node.
+
+func (t *DecisionTree) IsLeaf() bool
+    Returns true iff this node has no children
+
+func (t *DecisionTree) PrintTree(depth int, maxDepth int, verbose bool) string
+    Prints the tree to stdout. depth - for formatting purposes, use 0 on
+    invocation verbose - if true, it prints the same information, moreover
+    printing the list of observations for each node
+
+func (t *DecisionTree) PrintTree1(depth int, verbose bool) string
+    Prints the tree to stdout. depth - for formatting purposes, use 0 on
+    invocation verbose - if true, it prints the same information, moreover
+    printing the list of observations for each node
+
+type GiniPurityStrategy struct{}
+    Gini purity measure
+
+func (g GiniPurityStrategy) GetSlicePurity(data []*Observation, targetAttribute string) (slicePurity float64, err error)
+    Helper function to calculate the gini impurity of a set of observations.
+
+func (g GiniPurityStrategy) GetSplitPurity(predictor string, targetAttribute string, t *DecisionTree) (bestSplitIndex int, purityAtSplit float64, err error)
+    Given the predictor and a tree node, this function returns the best
+    split of observations according to Gini impurity measure. Output: a
+    tuple containing the best split index and the combined gini impurity
+    measure of the split (sum of impurities of both regions of the split)
+    Side effects: observations in the node are reoredered in a sorted
+    fashion according to values of provided predictor.
+
+type Observation map[string]Value
+
+type Options struct {
+    MinSplitSize     int
+    MaxSplitImpurity float64
+    MaxDepth         int
+    SplitStrategy    AbstractPurityMetric
+    TargetAttribute  string
+    Predictors       *[]string
+}
+
+type Value interface{}
+
+SUBDIRECTORIES
+
+	doc
+	test_data
+
